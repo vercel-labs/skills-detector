@@ -244,6 +244,11 @@ export function detectTools(ctx: DetectionContext): string[] {
 		}
 	}
 
+	// Exclude webpack if turbopack is detected (turbopack supersedes it)
+	if (detected.includes("turbopack") && detected.includes("webpack")) {
+		return detected.filter((t) => t !== "webpack");
+	}
+
 	return detected;
 }
 

@@ -84,9 +84,9 @@ function showVersion(): void {
 
 /**
  * Run 'npx skills find <term>' and parse the results
- * Returns array of "owner/repo@skill" strings
+ * Returns the top result (first match) or null if none found
  */
-function searchSkills(term: string): string[] {
+function searchSkills(term: string): string | null {
 	try {
 		const output = execSync(`npx skills find ${term}`, {
 			encoding: "utf-8",
@@ -98,10 +98,11 @@ function searchSkills(term: string): string[] {
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes require control chars
 		const stripped = output.replace(/\x1b\[[0-9;]*m/g, "");
 		const matches = stripped.match(/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+@[a-zA-Z0-9_:-]+/gm);
-		return matches ?? [];
+		// Return only the top result (first on leaderboard)
+		return matches?.[0] ?? null;
 	} catch {
 		// Search failed (network error, timeout, etc.)
-		return [];
+		return null;
 	}
 }
 
@@ -198,19 +199,23 @@ async function main(): Promise<void> {
 
 	// Search for skills
 	if (!options.json) {
-		console.log("\nSearching for skills...");
+		console.log("\nSearching for skills (top result per term)...");
 	}
 
 	const allSkillRefs: string[] = [];
 
 	for (const term of detected.searchTerms) {
 		if (!options.json) {
-			process.stdout.write(`  Searching: ${term}...`);
+			process.stdout.write(`  ${term}...`);
 		}
-		const found = searchSkills(term);
-		allSkillRefs.push(...found);
-		if (!options.json) {
-			console.log(` found ${found.length}`);
+		const topResult = searchSkills(term);
+		if (topResult) {
+			allSkillRefs.push(topResult);
+			if (!options.json) {
+				console.log(` ${topResult}`);
+			}
+		} else if (!options.json) {
+			console.log(" (none)");
 		}
 	}
 
