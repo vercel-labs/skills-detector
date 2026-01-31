@@ -76,7 +76,7 @@ const TOOL_PATTERNS: ToolPattern[] = [
 	},
 	{
 		name: "turbopack",
-		// Detected via Next.js with turbo flag
+		dependencies: ["@serwist/turbopack", "@vercel/turbopack", "turbopack"],
 	},
 	{
 		name: "turborepo",

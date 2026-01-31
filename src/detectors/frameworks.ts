@@ -38,7 +38,7 @@ const FRAMEWORK_PATTERNS: FrameworkPattern[] = [
 	},
 	{
 		name: "vue",
-		configFiles: ["vue.config.js", "vite.config.ts", "vite.config.js"],
+		configFiles: ["vue.config.js"],
 		dependencies: ["vue", "@vue/cli-service"],
 	},
 	{
@@ -53,7 +53,7 @@ const FRAMEWORK_PATTERNS: FrameworkPattern[] = [
 	},
 	{
 		name: "vite",
-		configFiles: ["vite.config.ts", "vite.config.js", "vite.config.mjs"],
+		// Only detect via dependency, not config files (vitest also uses vite.config)
 		dependencies: ["vite"],
 	},
 	{
