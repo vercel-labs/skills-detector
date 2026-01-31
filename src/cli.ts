@@ -8,6 +8,23 @@ import type { DetectionResult } from "./types.js";
 
 const SKILLS_JSON_FILE = "skills.json";
 
+/**
+ * Curated/official skill recommendations based on detected frameworks
+ * These take priority over search results
+ */
+const CURATED_SKILLS: Record<string, string[]> = {
+	// Next.js projects get official Vercel skills
+	nextjs: [
+		"vercel-labs/next-skills@next-best-practices",
+		"vercel-labs/next-skills@next-upgrade",
+		"vercel-labs/agent-skills@vercel-react-best-practices",
+	],
+	// React projects get Vercel React skills
+	react: ["vercel-labs/agent-skills@vercel-react-best-practices"],
+	// Turborepo projects
+	turborepo: ["vercel/turborepo@turborepo"],
+};
+
 interface CliOptions {
 	cwd?: string;
 	json?: boolean;
@@ -82,29 +99,53 @@ function showVersion(): void {
 	console.log("skills-detector 0.0.1");
 }
 
+// Ecosystem-specific terms that indicate a skill is for a particular platform
+const ECOSYSTEM_MARKERS: Record<string, string[]> = {
+	expo: ["expo", "react-native", "mobile"],
+	"react-native": ["expo", "react-native", "mobile"],
+	flutter: ["flutter", "dart"],
+	android: ["android", "kotlin", "gradle"],
+	ios: ["ios", "swift", "xcode", "cocoapods"],
+	unity: ["unity", "gamedev"],
+};
+
 /**
- * Check if a skill result is relevant to the search term
- * The term should appear as a word boundary in the skill reference
+ * Check if a skill result is relevant to the search term and project context
  */
-function isRelevantSkill(skillRef: string, term: string): boolean {
+function isRelevantSkill(skillRef: string, term: string, detectedFrameworks: string[]): boolean {
 	const lowerRef = skillRef.toLowerCase();
 	const lowerTerm = term.toLowerCase();
 
 	// Check for word-boundary match (not just substring)
 	// This prevents "express" matching "expression"
 	const wordBoundaryRegex = new RegExp(`(^|[^a-z])${escapeRegex(lowerTerm)}([^a-z]|$)`);
-	if (wordBoundaryRegex.test(lowerRef)) {
-		return true;
-	}
+	const hasTermMatch = wordBoundaryRegex.test(lowerRef);
 
-	// Handle hyphenated terms (e.g., "testing-library" should match "testing-library" or "react-testing-library")
-	if (lowerTerm.includes("-")) {
-		if (lowerRef.includes(lowerTerm)) {
-			return true;
+	if (!hasTermMatch) {
+		// Handle hyphenated terms (e.g., "testing-library" should match "react-testing-library")
+		if (lowerTerm.includes("-") && lowerRef.includes(lowerTerm)) {
+			// Continue to ecosystem check
+		} else {
+			return false;
 		}
 	}
 
-	return false;
+	// Check if the skill is for an ecosystem the project doesn't use
+	for (const [ecosystem, markers] of Object.entries(ECOSYSTEM_MARKERS)) {
+		// If any marker appears in the skill ref
+		const hasEcosystemMarker = markers.some((marker) => lowerRef.includes(marker));
+		if (hasEcosystemMarker) {
+			// Check if the project uses this ecosystem
+			const projectUsesEcosystem = detectedFrameworks.some(
+				(fw) => fw === ecosystem || markers.includes(fw.toLowerCase()),
+			);
+			if (!projectUsesEcosystem) {
+				return false; // Skill is for a different ecosystem
+			}
+		}
+	}
+
+	return true;
 }
 
 function escapeRegex(str: string): string {
@@ -115,7 +156,7 @@ function escapeRegex(str: string): string {
  * Run 'npx skills find <term>' and parse the results
  * Returns the top relevant result or null if none found
  */
-function searchSkills(term: string): string | null {
+function searchSkills(term: string, detectedFrameworks: string[]): string | null {
 	try {
 		const output = execSync(`npx skills find ${term}`, {
 			encoding: "utf-8",
@@ -130,9 +171,9 @@ function searchSkills(term: string): string | null {
 
 		if (!matches) return null;
 
-		// Find the first result that's actually relevant to the search term
+		// Find the first result that's actually relevant to the search term and project
 		for (const match of matches) {
-			if (isRelevantSkill(match, term)) {
+			if (isRelevantSkill(match, term, detectedFrameworks)) {
 				return match;
 			}
 		}
@@ -238,18 +279,31 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	// Search for skills
+	// Start with curated/official skills based on detected frameworks and tools
+	const allSkillRefs: string[] = [];
+	const curatedTerms = [...detected.frameworks, ...detected.tools];
+
+	for (const term of curatedTerms) {
+		const curated = CURATED_SKILLS[term];
+		if (curated) {
+			allSkillRefs.push(...curated);
+		}
+	}
+
+	if (!options.json && allSkillRefs.length > 0) {
+		console.log(`\nCurated skills: ${allSkillRefs.length}`);
+	}
+
+	// Search for additional skills
 	if (!options.json) {
 		console.log("\nSearching for skills (top result per term)...");
 	}
-
-	const allSkillRefs: string[] = [];
 
 	for (const term of detected.searchTerms) {
 		if (!options.json) {
 			process.stdout.write(`  ${term}...`);
 		}
-		const topResult = searchSkills(term);
+		const topResult = searchSkills(term, detected.frameworks);
 		if (topResult) {
 			allSkillRefs.push(topResult);
 			if (!options.json) {

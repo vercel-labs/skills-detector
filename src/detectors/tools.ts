@@ -244,12 +244,20 @@ export function detectTools(ctx: DetectionContext): string[] {
 		}
 	}
 
-	// Exclude webpack if turbopack is detected (turbopack supersedes it)
-	if (detected.includes("turbopack") && detected.includes("webpack")) {
-		return detected.filter((t) => t !== "webpack");
+	// Exclude superseded tools
+	let filtered = detected;
+
+	// Exclude webpack if turbopack is detected
+	if (filtered.includes("turbopack") && filtered.includes("webpack")) {
+		filtered = filtered.filter((t) => t !== "webpack");
 	}
 
-	return detected;
+	// Exclude eslint/prettier if biome is detected (biome replaces both)
+	if (filtered.includes("biome")) {
+		filtered = filtered.filter((t) => t !== "eslint" && t !== "prettier");
+	}
+
+	return filtered;
 }
 
 function matchesToolPattern(pattern: ToolPattern, ctx: DetectionContext): boolean {
