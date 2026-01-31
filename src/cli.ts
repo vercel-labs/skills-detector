@@ -291,7 +291,10 @@ async function main(): Promise<void> {
 	}
 
 	if (!options.json && allSkillRefs.length > 0) {
-		console.log(`\nCurated skills: ${allSkillRefs.length}`);
+		console.log("\nCurated skills:");
+		for (const ref of allSkillRefs) {
+			console.log(`  ${ref}`);
+		}
 	}
 
 	// Filter search terms:
