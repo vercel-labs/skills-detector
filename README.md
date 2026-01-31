@@ -1,65 +1,76 @@
 # skills-detector
 
-Detect project characteristics to recommend [agent skills](https://skills.sh).
+Detect project characteristics and find matching [agent skills](https://skills.sh).
 
 ## Installation
 
 ```bash
-npm install skills-detector
+npm install -g skills-detector
 ```
 
 ## Usage
 
-### CLI
-
 ```bash
-# Analyze current directory
-npx skills-detector
+# Analyze project and search for matching skills
+skills-detector
 
-# Output JSON only
-npx skills-detector --json
+# Detection only (no skill search)
+skills-detector --skip-search
+
+# Output JSON to stdout
+skills-detector --json
 
 # Analyze a specific directory
-npx skills-detector -C ./my-project
+skills-detector -C ./my-project
 ```
 
-### Programmatic
+## What it does
+
+1. **Detects** your project's frameworks, languages, tools, and testing setup
+2. **Searches** skills.sh for matching skills using each detected term
+3. **Writes** `skills.json` with results, compatible with [skillman](https://github.com/pi0/skillman)
+
+## Output
+
+Running `skills-detector` creates a `skills.json`:
+
+```json
+{
+  "$schema": "https://unpkg.com/skillman/skills_schema.json",
+  "detected": {
+    "frameworks": ["nextjs", "react"],
+    "languages": ["typescript"],
+    "tools": ["prisma", "tailwind"],
+    "testing": ["vitest"],
+    "searchTerms": ["nextjs", "prisma", "react", ...],
+    "timestamp": "2025-01-31T12:00:00.000Z"
+  },
+  "skills": [
+    { "source": "vercel-labs/agent-skills", "skills": ["vercel-react-best-practices"] },
+    { "source": "wshobson/agents", "skills": ["nextjs-app-router-patterns"] }
+  ]
+}
+```
+
+Then install with skillman:
+
+```bash
+npx skillman install
+```
+
+## Programmatic API
 
 ```typescript
 import { detect } from 'skills-detector'
 
-const result = detect()
-// or with custom directory
 const result = detect({ cwd: './my-project' })
-
-console.log(result)
 // {
 //   frameworks: ['nextjs', 'react'],
 //   languages: ['typescript'],
-//   tools: ['prisma', 'tailwind'],
-//   testing: ['vitest', 'playwright'],
+//   tools: ['prisma'],
+//   testing: ['vitest'],
 //   searchTerms: ['nextjs', 'prisma', 'react', ...]
 // }
-```
-
-## Output Format
-
-The detection result includes:
-
-- **frameworks**: Detected frameworks (e.g., `nextjs`, `remix`, `rails`, `django`)
-- **languages**: Detected programming languages (e.g., `typescript`, `python`, `go`)
-- **tools**: Detected tools and libraries (e.g., `prisma`, `tailwind`, `docker`)
-- **testing**: Detected testing frameworks (e.g., `vitest`, `jest`, `playwright`)
-- **searchTerms**: Combined list of all detected items for skill discovery
-
-## Finding Skills
-
-Use the `searchTerms` to find relevant skills:
-
-```bash
-npx skills find nextjs
-npx skills find prisma
-npx skills find tailwind
 ```
 
 ## Supported Detection

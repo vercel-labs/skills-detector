@@ -21,9 +21,13 @@ interface SkillEntry {
 	skills: string[];
 }
 
+interface DetectedWithTimestamp extends DetectionResult {
+	timestamp: string;
+}
+
 interface SkillsJson {
 	$schema: string;
-	detected: DetectionResult;
+	detected: DetectedWithTimestamp;
 	skills: SkillEntry[];
 }
 
@@ -217,7 +221,10 @@ async function main(): Promise<void> {
 	// Build skills.json
 	const skillsJson: SkillsJson = {
 		$schema: "https://unpkg.com/skillman/skills_schema.json",
-		detected,
+		detected: {
+			...detected,
+			timestamp: new Date().toISOString(),
+		},
 		skills,
 	};
 

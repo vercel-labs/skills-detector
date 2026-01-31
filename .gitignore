@@ -1,5 +1,5 @@
 node_modules/
 dist/
-.skills-detector.json
+skills.json
 *.tgz
 .DS_Store
