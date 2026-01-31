@@ -83,8 +83,37 @@ function showVersion(): void {
 }
 
 /**
+ * Check if a skill result is relevant to the search term
+ * The term should appear as a word boundary in the skill reference
+ */
+function isRelevantSkill(skillRef: string, term: string): boolean {
+	const lowerRef = skillRef.toLowerCase();
+	const lowerTerm = term.toLowerCase();
+
+	// Check for word-boundary match (not just substring)
+	// This prevents "express" matching "expression"
+	const wordBoundaryRegex = new RegExp(`(^|[^a-z])${escapeRegex(lowerTerm)}([^a-z]|$)`);
+	if (wordBoundaryRegex.test(lowerRef)) {
+		return true;
+	}
+
+	// Handle hyphenated terms (e.g., "testing-library" should match "testing-library" or "react-testing-library")
+	if (lowerTerm.includes("-")) {
+		if (lowerRef.includes(lowerTerm)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function escapeRegex(str: string): string {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Run 'npx skills find <term>' and parse the results
- * Returns the top result (first match) or null if none found
+ * Returns the top relevant result or null if none found
  */
 function searchSkills(term: string): string | null {
 	try {
@@ -98,8 +127,17 @@ function searchSkills(term: string): string | null {
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes require control chars
 		const stripped = output.replace(/\x1b\[[0-9;]*m/g, "");
 		const matches = stripped.match(/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+@[a-zA-Z0-9_:-]+/gm);
-		// Return only the top result (first on leaderboard)
-		return matches?.[0] ?? null;
+
+		if (!matches) return null;
+
+		// Find the first result that's actually relevant to the search term
+		for (const match of matches) {
+			if (isRelevantSkill(match, term)) {
+				return match;
+			}
+		}
+
+		return null;
 	} catch {
 		// Search failed (network error, timeout, etc.)
 		return null;
@@ -161,7 +199,7 @@ async function main(): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
 	// Detect project characteristics
-	const detected = detect({ cwd });
+	const detected = await detect({ cwd });
 
 	if (options.json && options.skipSearch) {
 		// Just output detection results
@@ -172,6 +210,9 @@ async function main(): Promise<void> {
 	if (!options.json) {
 		console.log("\nProject Analysis\n");
 
+		if (detected.packageManager) {
+			console.log(`Pkg Manager: ${detected.packageManager}`);
+		}
 		if (detected.frameworks.length > 0) {
 			console.log(`Frameworks:  ${detected.frameworks.join(", ")}`);
 		}

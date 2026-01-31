@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { detect as detectPackageManager } from "package-manager-detector";
 import { detectFrameworks } from "./detectors/frameworks.js";
 import { detectLanguages } from "./detectors/languages.js";
 import { detectTesting } from "./detectors/testing.js";
@@ -16,8 +17,12 @@ export interface DetectOptions {
 /**
  * Detect project characteristics for skill recommendations
  */
-export function detect(options: DetectOptions = {}): DetectionResult {
+export async function detect(options: DetectOptions = {}): Promise<DetectionResult> {
 	const cwd = resolve(options.cwd ?? process.cwd());
+
+	// Detect package manager using antfu's package-manager-detector
+	const pmResult = await detectPackageManager({ cwd });
+	const packageManager = pmResult?.name ?? null;
 
 	// Load package.json if it exists
 	const packageJson = loadPackageJson(cwd);
@@ -43,6 +48,7 @@ export function detect(options: DetectOptions = {}): DetectionResult {
 	const searchTerms = [...new Set([...frameworks, ...languages, ...tools, ...testing])].sort();
 
 	return {
+		packageManager,
 		frameworks,
 		languages,
 		tools,

@@ -2,6 +2,9 @@
  * Detected project characteristics for skill recommendations
  */
 export interface DetectionResult {
+	/** Detected package manager (npm, yarn, pnpm, bun, deno) */
+	packageManager: string | null;
+
 	/** Detected frameworks (e.g., nextjs, remix, rails, django) */
 	frameworks: string[];
 
