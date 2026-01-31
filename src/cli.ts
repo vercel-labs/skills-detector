@@ -294,12 +294,27 @@ async function main(): Promise<void> {
 		console.log(`\nCurated skills: ${allSkillRefs.length}`);
 	}
 
+	// Filter search terms:
+	// 1. Skip terms that already have curated skills
+	// 2. Skip generic language terms (javascript/typescript) when frameworks are detected
+	const curatedTermSet = new Set(Object.keys(CURATED_SKILLS));
+	let searchTerms = detected.searchTerms.filter((term) => !curatedTermSet.has(term));
+
+	// If we have frameworks, skip generic language skills (framework skills are better)
+	// Also if typescript is detected, skip javascript (typescript is a superset)
+	if (detected.frameworks.length > 0) {
+		searchTerms = searchTerms.filter((term) => term !== "javascript" && term !== "typescript");
+	} else if (searchTerms.includes("typescript")) {
+		// No frameworks but has typescript - skip javascript
+		searchTerms = searchTerms.filter((term) => term !== "javascript");
+	}
+
 	// Search for additional skills
 	if (!options.json) {
 		console.log("\nSearching for skills (top result per term)...");
 	}
 
-	for (const term of detected.searchTerms) {
+	for (const term of searchTerms) {
 		if (!options.json) {
 			process.stdout.write(`  ${term}...`);
 		}
