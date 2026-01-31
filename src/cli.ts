@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 
+import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { detect } from "./index.js";
+import type { DetectionResult } from "./types.js";
 
-const OUTPUT_FILE = ".skills-detector.json";
+const SKILLS_JSON_FILE = "skills.json";
 
 interface CliOptions {
 	cwd?: string;
-	output?: string;
 	json?: boolean;
+	skipSearch?: boolean;
 	help?: boolean;
 	version?: boolean;
+}
+
+interface SkillEntry {
+	source: string;
+	skills: string[];
+}
+
+interface SkillsJson {
+	$schema: string;
+	detected: DetectionResult;
+	skills: SkillEntry[];
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -26,8 +39,8 @@ function parseArgs(args: string[]): CliOptions {
 			options.version = true;
 		} else if (arg === "--json") {
 			options.json = true;
-		} else if (arg === "--output" || arg === "-o") {
-			options.output = args[++i];
+		} else if (arg === "--skip-search") {
+			options.skipSearch = true;
 		} else if (arg === "--cwd" || arg === "-C") {
 			options.cwd = args[++i];
 		}
@@ -38,7 +51,7 @@ function parseArgs(args: string[]): CliOptions {
 
 function showHelp(): void {
 	console.log(`
-skills-detector - Detect project characteristics for skill recommendations
+skills-detector - Detect project characteristics and find matching skills
 
 Usage: skills-detector [options]
 
@@ -46,34 +59,87 @@ Options:
   -h, --help       Show this help message
   -v, --version    Show version number
   --json           Output only JSON (no other text)
-  -o, --output     Output file path (default: ${OUTPUT_FILE})
+  --skip-search    Skip searching for skills (detection only)
   -C, --cwd        Working directory to analyze (default: current directory)
 
 Examples:
-  $ skills-detector                    # Analyze current directory
+  $ skills-detector                    # Analyze and search for skills
   $ skills-detector --json             # Output JSON only
-  $ skills-detector -o project.json    # Custom output file
+  $ skills-detector --skip-search      # Detection only, no skill search
   $ skills-detector -C ./my-project    # Analyze specific directory
 
-Output Format:
-  {
-    "frameworks": ["nextjs", "react"],
-    "languages": ["typescript"],
-    "tools": ["prisma", "tailwind"],
-    "testing": ["vitest", "playwright"],
-    "searchTerms": ["nextjs", "prisma", "react", ...]
-  }
-
-Use searchTerms with 'npx skills find <term>' to discover relevant skills.
+Output:
+  Writes skills.json with detected project info and recommended skills.
+  Use with skillman to install: npx skillman install
 `);
 }
 
 function showVersion(): void {
-	// In a real build, this would come from package.json
 	console.log("skills-detector 0.0.1");
 }
 
-function main(): void {
+/**
+ * Run 'npx skills find <term>' and parse the results
+ * Returns array of "owner/repo@skill" strings
+ */
+function searchSkills(term: string): string[] {
+	try {
+		const output = execSync(`npx skills find ${term}`, {
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+			timeout: 30000,
+		});
+
+		// Strip ANSI codes and find lines matching owner/repo@skill pattern
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes require control chars
+		const stripped = output.replace(/\x1b\[[0-9;]*m/g, "");
+		const matches = stripped.match(/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+@[a-zA-Z0-9_:-]+/gm);
+		return matches ?? [];
+	} catch {
+		// Search failed (network error, timeout, etc.)
+		return [];
+	}
+}
+
+/**
+ * Parse "owner/repo@skill" into source and skill name
+ */
+function parseSkillRef(ref: string): { source: string; skill: string } {
+	const atIndex = ref.indexOf("@");
+	if (atIndex === -1) {
+		return { source: ref, skill: "" };
+	}
+	return {
+		source: ref.slice(0, atIndex),
+		skill: ref.slice(atIndex + 1),
+	};
+}
+
+/**
+ * Group skill refs by source and dedupe
+ */
+function groupSkillsBySource(refs: string[]): SkillEntry[] {
+	const sourceMap = new Map<string, Set<string>>();
+
+	for (const ref of refs) {
+		const { source, skill } = parseSkillRef(ref);
+		if (!sourceMap.has(source)) {
+			sourceMap.set(source, new Set());
+		}
+		if (skill) {
+			sourceMap.get(source)?.add(skill);
+		}
+	}
+
+	return Array.from(sourceMap.entries())
+		.map(([source, skills]) => ({
+			source,
+			skills: Array.from(skills).sort(),
+		}))
+		.sort((a, b) => a.source.localeCompare(b.source));
+}
+
+async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const options = parseArgs(args);
 
@@ -88,51 +154,88 @@ function main(): void {
 	}
 
 	const cwd = options.cwd ?? process.cwd();
-	const outputPath = options.output ?? join(cwd, OUTPUT_FILE);
 
 	// Detect project characteristics
-	const result = detect({ cwd });
+	const detected = detect({ cwd });
 
-	// Output JSON
-	const jsonOutput = JSON.stringify(result, null, 2);
+	if (options.json && options.skipSearch) {
+		// Just output detection results
+		console.log(JSON.stringify(detected, null, 2));
+		return;
+	}
 
-	if (options.json) {
-		// JSON-only mode
-		console.log(jsonOutput);
-	} else {
-		// Human-friendly output
+	if (!options.json) {
 		console.log("\nProject Analysis\n");
 
-		if (result.frameworks.length > 0) {
-			console.log(`Frameworks:  ${result.frameworks.join(", ")}`);
+		if (detected.frameworks.length > 0) {
+			console.log(`Frameworks:  ${detected.frameworks.join(", ")}`);
 		}
-		if (result.languages.length > 0) {
-			console.log(`Languages:   ${result.languages.join(", ")}`);
+		if (detected.languages.length > 0) {
+			console.log(`Languages:   ${detected.languages.join(", ")}`);
 		}
-		if (result.tools.length > 0) {
-			console.log(`Tools:       ${result.tools.join(", ")}`);
+		if (detected.tools.length > 0) {
+			console.log(`Tools:       ${detected.tools.join(", ")}`);
 		}
-		if (result.testing.length > 0) {
-			console.log(`Testing:     ${result.testing.join(", ")}`);
+		if (detected.testing.length > 0) {
+			console.log(`Testing:     ${detected.testing.join(", ")}`);
 		}
 
-		if (result.searchTerms.length === 0) {
+		if (detected.searchTerms.length === 0) {
 			console.log("\nNo project characteristics detected.");
-		} else {
-			console.log(`\nSearch terms: ${result.searchTerms.join(", ")}`);
+			return;
+		}
 
-			// Write output file
-			writeFileSync(outputPath, `${jsonOutput}\n`);
-			console.log(`\nWrote ${outputPath}`);
+		console.log(`\nSearch terms: ${detected.searchTerms.join(", ")}`);
+	}
 
-			// Suggest skill search commands
-			console.log("\nFind relevant skills:");
-			const topTerms = result.searchTerms.slice(0, 5);
-			for (const term of topTerms) {
-				console.log(`  npx skills find ${term}`);
-			}
+	if (options.skipSearch) {
+		return;
+	}
+
+	// Search for skills
+	if (!options.json) {
+		console.log("\nSearching for skills...");
+	}
+
+	const allSkillRefs: string[] = [];
+
+	for (const term of detected.searchTerms) {
+		if (!options.json) {
+			process.stdout.write(`  Searching: ${term}...`);
+		}
+		const found = searchSkills(term);
+		allSkillRefs.push(...found);
+		if (!options.json) {
+			console.log(` found ${found.length}`);
 		}
 	}
+
+	// Dedupe and group by source
+	const uniqueRefs = [...new Set(allSkillRefs)];
+	const skills = groupSkillsBySource(uniqueRefs);
+
+	// Build skills.json
+	const skillsJson: SkillsJson = {
+		$schema: "https://unpkg.com/skillman/skills_schema.json",
+		detected,
+		skills,
+	};
+
+	if (options.json) {
+		console.log(JSON.stringify(skillsJson, null, 2));
+		return;
+	}
+
+	// Write skills.json
+	const outputPath = join(cwd, SKILLS_JSON_FILE);
+	writeFileSync(outputPath, `${JSON.stringify(skillsJson, null, 2)}\n`);
+
+	console.log(`\nFound ${uniqueRefs.length} skills from ${skills.length} sources`);
+	console.log(`Wrote ${outputPath}`);
+	console.log("\nInstall with: npx skillman install");
 }
 
-main();
+main().catch((error) => {
+	console.error(`Error: ${error instanceof Error ? error.message : error}`);
+	process.exitCode = 1;
+});
