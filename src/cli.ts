@@ -25,6 +25,23 @@ const CURATED_SKILLS: Record<string, string[]> = {
 	turborepo: ["vercel/turborepo@turborepo"],
 };
 
+/**
+ * Web frameworks that should get design guidelines skill
+ */
+const WEB_FRAMEWORKS = [
+	"nextjs",
+	"react",
+	"vue",
+	"svelte",
+	"nuxt",
+	"remix",
+	"astro",
+	"gatsby",
+	"angular",
+	"solid",
+	"qwik",
+];
+
 interface CliOptions {
 	cwd?: string;
 	json?: boolean;
@@ -288,6 +305,12 @@ async function main(): Promise<void> {
 		if (curated) {
 			allSkillRefs.push(...curated);
 		}
+	}
+
+	// Add web design guidelines for any web framework
+	const isWebApp = detected.frameworks.some((fw) => WEB_FRAMEWORKS.includes(fw));
+	if (isWebApp) {
+		allSkillRefs.push("vercel-labs/web-design-guidelines@web-design-guidelines");
 	}
 
 	if (!options.json && allSkillRefs.length > 0) {
